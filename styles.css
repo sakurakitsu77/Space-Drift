@@ -287,6 +287,10 @@ button:active{
     linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,.02) 24%, rgba(255,255,255,.05));
 }
 
+.touch-rail.active .thumb{
+  opacity: 1;
+}
+
 .touch-rail::before{
   content:"";
   position:absolute;

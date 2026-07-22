@@ -431,37 +431,46 @@ function pointerX(clientX) {
   return clamp((clientX - rect.left) / rect.width, 0.04, 0.96);
 }
 
-function onPointerDown(e) {
+function beginSteer(e) {
   if (!playing) return;
   if (e.target.closest && e.target.closest('button')) return;
+
   pointer.active = true;
   pointer.id = e.pointerId;
   pointer.x = pointerX(e.clientX);
   ship.targetX = pointer.x;
+
   thumb.style.left = `${pointer.x * 100}%`;
   thumb.style.transform = 'translateX(-50%) scale(1.05)';
   touchRail.classList.add('active');
-  canvas.setPointerCapture?.(e.pointerId);
+
+  try {
+    e.currentTarget?.setPointerCapture?.(e.pointerId);
+  } catch {}
+  e.preventDefault();
 }
 
-function onPointerMove(e) {
+function moveSteer(e) {
   if (!pointer.active || pointer.id !== e.pointerId) return;
   pointer.x = pointerX(e.clientX);
   ship.targetX = pointer.x;
   thumb.style.left = `${pointer.x * 100}%`;
+  e.preventDefault();
 }
 
-function onPointerUp(e) {
+function endSteer(e) {
   if (pointer.id !== null && e.pointerId !== pointer.id) return;
   pointer.active = false;
   pointer.id = null;
   thumb.style.transform = 'translateX(-50%) scale(1)';
+  e.preventDefault();
 }
 
-canvas.addEventListener('pointerdown', onPointerDown);
-window.addEventListener('pointermove', onPointerMove);
-window.addEventListener('pointerup', onPointerUp);
-window.addEventListener('pointercancel', onPointerUp);
+canvas.addEventListener('pointerdown', beginSteer);
+touchRail.addEventListener('pointerdown', beginSteer);
+window.addEventListener('pointermove', moveSteer);
+window.addEventListener('pointerup', endSteer);
+window.addEventListener('pointercancel', endSteer);
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') {
@@ -935,7 +944,11 @@ function draw(dt) {
 
   if (playing) {
     const drift = Math.sin(performance.now() * 0.004) * 2;
-    thumb.style.transform = `translateX(-50%) translateY(${drift}px)`;
+    if (pointer.active) {
+      thumb.style.transform = 'translateX(-50%) scale(1.05)';
+    } else {
+      thumb.style.transform = `translateX(-50%) translateY(${drift}px)`;
+    }
   }
 }
 
