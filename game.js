@@ -289,6 +289,11 @@ function startChapter(index) {
   ship.targetX = 0.5;
   ship.vx = 0;
   ship.tilt = 0;
+  input.active = false;
+  input.pointerId = null;
+  input.source = 'idle';
+  thumb.style.transform = 'translateX(-50%) scale(1)';
+  touchRail.classList.remove('active');
 
   notes = [];
   rings = [];
@@ -418,12 +423,13 @@ function rankForSignal(signal, notes) {
 }
 
 /* =========================
-   Touch steering
+   Touch / mouse steering
 ========================= */
-const pointer = {
+const input = {
   active: false,
-  id: null,
+  pointerId: null,
   x: 0.5,
+  source: 'idle',
 };
 
 function pointerX(clientX) {
@@ -431,46 +437,136 @@ function pointerX(clientX) {
   return clamp((clientX - rect.left) / rect.width, 0.04, 0.96);
 }
 
-function beginSteer(e) {
+function setThumbPosition(xNorm) {
+  thumb.style.left = `${xNorm * 100}%`;
+}
+
+function beginSteer(clientX, source, pointerId = null, captureTarget = null) {
   if (!playing) return;
-  if (e.target.closest && e.target.closest('button')) return;
 
-  pointer.active = true;
-  pointer.id = e.pointerId;
-  pointer.x = pointerX(e.clientX);
-  ship.targetX = pointer.x;
+  input.active = true;
+  input.pointerId = pointerId;
+  input.x = pointerX(clientX);
+  input.source = source;
+  ship.targetX = input.x;
 
-  thumb.style.left = `${pointer.x * 100}%`;
+  setThumbPosition(input.x);
   thumb.style.transform = 'translateX(-50%) scale(1.05)';
   touchRail.classList.add('active');
 
-  try {
-    e.currentTarget?.setPointerCapture?.(e.pointerId);
-  } catch {}
-  e.preventDefault();
+  if (captureTarget && typeof captureTarget.setPointerCapture === 'function' && pointerId !== null) {
+    try { captureTarget.setPointerCapture(pointerId); } catch {}
+  }
 }
 
-function moveSteer(e) {
-  if (!pointer.active || pointer.id !== e.pointerId) return;
-  pointer.x = pointerX(e.clientX);
-  ship.targetX = pointer.x;
-  thumb.style.left = `${pointer.x * 100}%`;
-  e.preventDefault();
+function moveSteer(clientX, pointerId = null) {
+  if (!input.active) return;
+  if (input.pointerId !== null && pointerId !== null && input.pointerId !== pointerId) return;
+
+  input.x = pointerX(clientX);
+  ship.targetX = input.x;
+  setThumbPosition(input.x);
 }
 
-function endSteer(e) {
-  if (pointer.id !== null && e.pointerId !== pointer.id) return;
-  pointer.active = false;
-  pointer.id = null;
+function endSteer(pointerId = null) {
+  if (!input.active) return;
+  if (input.pointerId !== null && pointerId !== null && input.pointerId !== pointerId) return;
+
+  input.active = false;
+  input.pointerId = null;
+  input.source = 'idle';
   thumb.style.transform = 'translateX(-50%) scale(1)';
+  touchRail.classList.remove('active');
+}
+
+function isInteractiveTarget(target) {
+  return !!(target && target.closest && target.closest('button, a, input, textarea, select'));
+}
+
+// Pointer Events (modern desktop/mobile)
+function onPointerDown(e) {
+  if (!playing || isInteractiveTarget(e.target)) return;
+  beginSteer(e.clientX, 'pointer', e.pointerId, e.currentTarget);
   e.preventDefault();
 }
 
-canvas.addEventListener('pointerdown', beginSteer);
-touchRail.addEventListener('pointerdown', beginSteer);
-window.addEventListener('pointermove', moveSteer);
-window.addEventListener('pointerup', endSteer);
-window.addEventListener('pointercancel', endSteer);
+function onPointerMove(e) {
+  if (!input.active) return;
+  moveSteer(e.clientX, e.pointerId);
+  e.preventDefault();
+}
+
+function onPointerUp(e) {
+  endSteer(e.pointerId);
+  e.preventDefault();
+}
+
+// Mouse fallback
+function onMouseDown(e) {
+  if (!playing || e.button !== 0 || isInteractiveTarget(e.target)) return;
+  beginSteer(e.clientX, 'mouse', null, e.currentTarget);
+  e.preventDefault();
+}
+
+function onMouseMove(e) {
+  if (!input.active || input.source !== 'mouse') return;
+  moveSteer(e.clientX, null);
+}
+
+function onMouseUp() {
+  if (input.source === 'mouse') endSteer(null);
+}
+
+// Touch fallback for Safari/iOS reliability
+function touchClientX(touchEvent) {
+  const t = touchEvent.touches && touchEvent.touches[0]
+    ? touchEvent.touches[0]
+    : touchEvent.changedTouches && touchEvent.changedTouches[0]
+      ? touchEvent.changedTouches[0]
+      : null;
+  return t ? t.clientX : null;
+}
+
+function onTouchStart(e) {
+  if (!playing || isInteractiveTarget(e.target)) return;
+  const x = touchClientX(e);
+  if (x == null) return;
+  const touch = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : null;
+  beginSteer(x, 'touch', touch ? touch.identifier : null, e.currentTarget);
+  e.preventDefault();
+}
+
+function onTouchMove(e) {
+  if (!input.active || input.source !== 'touch') return;
+  const x = touchClientX(e);
+  if (x == null) return;
+  moveSteer(x, null);
+  e.preventDefault();
+}
+
+function onTouchEnd() {
+  if (input.source === 'touch') endSteer(null);
+}
+
+[canvas, touchRail, thumb].forEach((el) => {
+  el.addEventListener('pointerdown', onPointerDown, { passive: false });
+  el.addEventListener('pointermove', onPointerMove, { passive: false });
+  el.addEventListener('pointerup', onPointerUp, { passive: false });
+  el.addEventListener('pointercancel', onPointerUp, { passive: false });
+
+  el.addEventListener('mousedown', onMouseDown);
+  el.addEventListener('mousemove', onMouseMove);
+  el.addEventListener('mouseup', onMouseUp);
+
+  el.addEventListener('touchstart', onTouchStart, { passive: false });
+  el.addEventListener('touchmove', onTouchMove, { passive: false });
+  el.addEventListener('touchend', onTouchEnd, { passive: false });
+  el.addEventListener('touchcancel', onTouchEnd, { passive: false });
+});
+
+window.addEventListener('mouseup', onMouseUp);
+window.addEventListener('touchend', onTouchEnd, { passive: false });
+window.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') {
@@ -944,11 +1040,7 @@ function draw(dt) {
 
   if (playing) {
     const drift = Math.sin(performance.now() * 0.004) * 2;
-    if (pointer.active) {
-      thumb.style.transform = 'translateX(-50%) scale(1.05)';
-    } else {
-      thumb.style.transform = `translateX(-50%) translateY(${drift}px)`;
-    }
+    thumb.style.transform = `translateX(-50%) translateY(${drift}px)`;
   }
 }
 

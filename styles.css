@@ -283,12 +283,18 @@ button:active{
   height: 30%;
   z-index:6;
   pointer-events:auto;
+  touch-action:none;
+  -ms-touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  overscroll-behavior:contain;
+  cursor:grab;
   background:
     linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,.02) 24%, rgba(255,255,255,.05));
 }
 
-.touch-rail.active .thumb{
-  opacity: 1;
+.touch-rail.active{
+  cursor:grabbing;
 }
 
 .touch-rail::before{
@@ -343,6 +349,10 @@ button:active{
   opacity:.82;
   transform: translateX(0);
   transition: opacity .18s ease, transform .08s linear;
+  touch-action:none;
+  -ms-touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
 }
 
 /* =========================
